@@ -95,6 +95,7 @@ function initSetup() {
 }
 
 function startGame() {
+  $("startBtn").disabled = true;
   const chosen = heroes[state.selectedHero];
   const rivals = shuffle(heroes.filter((hero) => hero.id !== chosen.id)).slice(0, 4);
   const roles = shuffle(rolesForFive);
@@ -129,11 +130,13 @@ function startGame() {
   state.resultText = "";
   state.players.forEach((player) => draw(player, 4));
   $("setup").classList.add("hidden");
-  $("game").classList.remove("hidden");
   const lord = getLord();
   log(`身份局开始。你的身份是【${state.players[0].role}】，本局主公是 ${lord.name}。`);
-  beginTurn(lord.seat);
-  window.setTimeout(animateOpeningDeal, 180);
+  playIdentityDrawAnimation(() => {
+    $("game").classList.remove("hidden");
+    beginTurn(lord.seat);
+    window.setTimeout(animateOpeningDeal, 180);
+  });
 }
 
 function getLord() {
@@ -145,6 +148,42 @@ function getCamp(player) {
   if (player.role === "反贼") return "rebel";
   if (player.role === "内奸") return "traitor";
   return "lord";
+}
+
+function playIdentityDrawAnimation(done) {
+  const modal = $("identityModal");
+  const cards = $("identityCards");
+  const title = $("identityTitle");
+  const text = $("identityText");
+  if (!modal || !cards || !title || !text) {
+    done();
+    return;
+  }
+  const humanRole = state.players[0].role;
+  const lord = getLord();
+  modal.classList.remove("hidden", "revealed");
+  title.textContent = "洗混身份牌";
+  text.textContent = "五张身份牌正在洗混，稍后翻开你的身份。";
+  cards.innerHTML = rolesForFive.map((role, index) => `
+    <div class="identity-card shuffle-${index + 1}" style="--i:${index}">
+      <div class="identity-card-inner">
+        <div class="identity-face identity-back">?</div>
+        <div class="identity-face identity-front">${index === 2 ? humanRole : role}</div>
+      </div>
+    </div>
+  `).join("");
+
+  window.setTimeout(() => {
+    modal.classList.add("revealed");
+    title.textContent = `你的身份：${humanRole}`;
+    text.textContent = `本局主公是 ${lord.name}。记住自己的阵营，准备开局。`;
+  }, 1450);
+
+  window.setTimeout(() => {
+    modal.classList.add("hidden");
+    modal.classList.remove("revealed");
+    done();
+  }, 3150);
 }
 
 function beginTurn(index) {
