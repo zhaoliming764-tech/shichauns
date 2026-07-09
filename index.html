@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>视传杀</title>
-    <link rel="stylesheet" href="./styles.css?v=fullscreen-fit-1" />
+    <link rel="stylesheet" href="./styles.css?v=play-feel-2" />
   </head>
   <body>
     <main class="app">
@@ -77,7 +77,9 @@
             <div class="table-status">
               <span id="phaseLabel">等待开始</span>
               <span id="hintLabel">选择一张牌行动</span>
+              <span id="timerLabel">计时 --</span>
             </div>
+            <div class="timer-track" aria-hidden="true"><i id="timerFill"></i></div>
             <div class="piles">
               <div class="pile deck-pile">
                 <span>牌堆</span>
@@ -99,6 +101,7 @@
               <div class="response-box">
                 <h3 id="responseTitle">响应</h3>
                 <p id="responseText"></p>
+                <div class="response-timer" aria-hidden="true"><i id="responseTimerFill"></i></div>
                 <div id="responseActions" class="response-actions"></div>
               </div>
             </div>
@@ -137,6 +140,6 @@
       </section>
     </main>
 
-    <script src="./game.js?v=fullscreen-fit-1"></script>
+    <script src="./game.js?v=play-feel-2"></script>
   </body>
 </html>

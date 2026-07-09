@@ -10,6 +10,8 @@ const heroes = [
 
 const rolesForFive = ["主公", "忠臣", "反贼", "反贼", "内奸"];
 const phaseSteps = ["准备", "判定", "摸牌", "出牌", "弃牌", "结束"];
+const playTimeLimit = 45;
+const responseTimeLimit = 12;
 const cardTemplates = [
   { key: "sha", type: "attack", name: "提案突袭", text: "对一名角色造成 1 点创意压力。", count: 18, art: "proposal-strike" },
   { key: "shan", type: "defense", name: "临场改稿", text: "响应突袭，抵消一次伤害。", count: 14, art: "quick-revision" },
@@ -38,6 +40,10 @@ const state = {
   winnerCamp: null,
   resultTitle: "",
   resultText: "",
+  timer: null,
+  timerMode: "",
+  timerLeft: 0,
+  timerTotal: 0,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -188,6 +194,7 @@ function playIdentityDrawAnimation(done) {
 
 function beginTurn(index) {
   if (state.gameOver) return;
+  stopTimer();
   const player = state.players[index];
   if (!player.alive) return nextTurn();
   state.current = index;
@@ -208,7 +215,8 @@ function beginTurn(index) {
   draw(player, 2);
   state.turnPhase = "出牌";
   render();
-  if (!player.isHuman) window.setTimeout(aiPlay, 520);
+  if (player.isHuman) startTimer("play", playTimeLimit);
+  else window.setTimeout(aiPlay, 520);
 }
 
 function nextTurn() {
@@ -230,11 +238,16 @@ function canUseCard(player, card) {
   if (card.key === "shan") return false;
   if (card.key === "sha") return state.attackUsed < maxAttacks(player);
   if (card.key === "tao") return player.hp < player.maxHp;
+  if (needsTarget(card)) return hasValidTarget(card);
   return true;
 }
 
 function needsTarget(card) {
   return card.key === "sha" || card.key === "chai";
+}
+
+function hasValidTarget(card) {
+  return state.players.some((player) => isTargetable(player, card));
 }
 
 function playCard(cardIndex, targetIndex = null) {
@@ -246,6 +259,12 @@ function playCard(cardIndex, targetIndex = null) {
   }
   if (needsTarget(card) && targetIndex === null) {
     showTargets(cardIndex);
+    return;
+  }
+  if (needsTarget(card) && !isTargetable(state.players[targetIndex], card)) {
+    log("这个目标当前不能被指定。");
+    state.pendingCardIndex = null;
+    render();
     return;
   }
   animatePlayedCard(card, { cardIndex, sourceSeat: player.seat });
@@ -260,6 +279,10 @@ function playCard(cardIndex, targetIndex = null) {
 
 function showTargets(cardIndex) {
   const card = state.players[0].hand[cardIndex];
+  if (!hasValidTarget(card)) {
+    log(`没有可指定的目标，【${card.name}】当前不能使用。`);
+    return;
+  }
   state.pendingCardIndex = cardIndex;
   render();
 }
@@ -370,6 +393,7 @@ function attack(user, target, group = false) {
     };
     log(`${target.name} 需要响应【临场改稿】。`);
     render();
+    startTimer("response", responseTimeLimit);
     return;
   }
   if (!target.isHuman && dodgeIndex >= 0 && Math.random() > 0.24) {
@@ -385,6 +409,7 @@ function attack(user, target, group = false) {
 }
 
 function resolveDodge(useCard) {
+  stopTimer();
   const response = state.pendingResponse;
   if (!response || response.kind !== "dodge") return;
   const source = state.players[response.sourceSeat];
@@ -446,6 +471,7 @@ function enterDying(target, source) {
     state.pendingResponse = { kind: "peach", targetSeat: target.seat, sourceSeat: source.seat };
     log(`${target.name} 进入濒危，需要决定是否使用【灵感补给】。`);
     render();
+    startTimer("response", responseTimeLimit);
     return;
   }
   if (!target.isHuman && peachIndex >= 0) {
@@ -464,6 +490,7 @@ function enterDying(target, source) {
 }
 
 function resolvePeach(useCard) {
+  stopTimer();
   const response = state.pendingResponse;
   if (!response || response.kind !== "peach") return;
   const target = state.players[response.targetSeat];
@@ -564,11 +591,78 @@ function useSkill() {
 
 function endHumanTurn() {
   if (state.current !== 0 || state.phase !== "play" || state.pendingResponse) return;
+  stopTimer();
   state.pendingCardIndex = null;
   $("targetRow").innerHTML = "";
   discardToLimit(state.players[0]);
   endPhase(state.players[0]);
   nextTurn();
+}
+
+function startTimer(mode, seconds) {
+  stopTimer();
+  state.timerMode = mode;
+  state.timerLeft = seconds;
+  state.timerTotal = seconds;
+  renderTimer();
+  state.timer = window.setInterval(() => {
+    state.timerLeft -= 1;
+    renderTimer();
+    if (state.timerLeft <= 0) handleTimerExpired();
+  }, 1000);
+}
+
+function stopTimer() {
+  if (state.timer) {
+    window.clearInterval(state.timer);
+    state.timer = null;
+  }
+  state.timerMode = "";
+  state.timerLeft = 0;
+  state.timerTotal = 0;
+  renderTimer();
+}
+
+function handleTimerExpired() {
+  const mode = state.timerMode;
+  stopTimer();
+  if (state.gameOver) return;
+  if (mode === "play" && state.current === 0 && state.phase === "play" && !state.pendingResponse) {
+    log("出牌时间结束，自动结束出牌。");
+    endHumanTurn();
+    return;
+  }
+  if (mode === "response" && state.pendingResponse) {
+    log("响应时间结束，自动放弃响应。");
+    if (state.pendingResponse.kind === "dodge") resolveDodge(false);
+    else if (state.pendingResponse.kind === "peach") resolvePeach(false);
+  }
+}
+
+function renderTimer() {
+  const label = $("timerLabel");
+  const fill = $("timerFill");
+  const responseFill = $("responseTimerFill");
+  if (!label || !fill) return;
+  if (!state.timerMode || state.gameOver) {
+    label.textContent = "计时 --";
+    fill.style.width = "0%";
+    fill.classList.remove("urgent");
+    if (responseFill) {
+      responseFill.style.width = "0%";
+      responseFill.classList.remove("urgent");
+    }
+    return;
+  }
+  const labelText = state.timerMode === "response" ? "响应" : "出牌";
+  const percent = Math.max(0, Math.min(100, (state.timerLeft / state.timerTotal) * 100));
+  label.textContent = `${labelText} ${state.timerLeft}s`;
+  fill.style.width = `${percent}%`;
+  fill.classList.toggle("urgent", state.timerLeft <= 5);
+  if (responseFill) {
+    responseFill.style.width = state.timerMode === "response" ? `${percent}%` : "0%";
+    responseFill.classList.toggle("urgent", state.timerMode === "response" && state.timerLeft <= 5);
+  }
 }
 
 function discardToLimit(player) {
@@ -633,7 +727,11 @@ function playAiTactic(ai) {
   if (Math.random() < 0.52) return;
   const card = takeCard(ai, (item) => item.key === "chai");
   if (!card) return;
-  const target = chooseAiTarget(ai);
+  const target = chooseAiTarget(ai, (player) => player.hand.length > 0);
+  if (!target) {
+    ai.hand.push(card);
+    return;
+  }
   animatePlayedCard(card, { sourceSeat: ai.seat });
   resolveCard(ai, card, target.seat);
   state.discard.push(card);
@@ -652,10 +750,11 @@ function playAiAttack(ai) {
   }
 }
 
-function chooseAiTarget(ai) {
-  const alive = state.players.filter((player) => player.alive && player !== ai);
+function chooseAiTarget(ai, extraFilter = () => true) {
+  const alive = state.players.filter((player) => player.alive && player !== ai && extraFilter(player));
+  if (!alive.length) return null;
   const lord = getLord();
-  if (ai.role === "反贼") return lord.alive ? lord : alive[0];
+  if (ai.role === "反贼") return alive.includes(lord) ? lord : alive[0];
   if (ai.role === "忠臣" || ai.role === "主公") return alive.find((player) => player.role === "反贼") || alive.find((player) => player.role === "内奸") || alive[0];
   if (ai.role === "内奸") return alive.sort((a, b) => a.hp - b.hp)[0];
   return alive.find((player) => player.role === "反贼") || alive[0];
@@ -673,6 +772,7 @@ function checkWin() {
 }
 
 function endGame(message, winnerCamp) {
+  stopTimer();
   state.gameOver = true;
   state.phase = "ended";
   state.turnPhase = "结束";
@@ -709,6 +809,9 @@ function render() {
   const renderPlayer = (player, index, revealRole = false) => {
     const targetable = isTargetable(player, pendingCard);
     const showRole = revealRole || player.role === "主公" || !player.alive || state.gameOver;
+    const equipmentText = player.equipment.length
+      ? player.equipment.map((card) => `【${card.name}】${card.text}`).join(" / ")
+      : "暂无装备";
     return `
     <article class="player-card ${index === state.current ? "current" : ""} ${player.alive ? "" : "dead"} ${targetable ? "targetable" : ""} ${player.hitFlash ? "hit-flash" : ""}" data-seat="${player.seat}">
       <div class="role-token ${showRole ? "" : "hidden-role"}">${showRole ? player.role.slice(0, 1) : "?"}</div>
@@ -724,6 +827,12 @@ function render() {
           <span>${player.equipment.length ? "数位板已装备" : "无装备"}</span>
           <div class="hp">${Array.from({ length: Math.max(player.hp, 0) }, () => `<i class="heart"></i>`).join("")}</div>
         </div>
+        <div class="equipment-strip">${equipmentText}</div>
+      </div>
+      <div class="skill-tip">
+        <strong>${player.skill}</strong>
+        <span>${player.desc}</span>
+        <em>${equipmentText}</em>
       </div>
     </article>
   `;
@@ -736,10 +845,12 @@ function render() {
   renderHand();
   renderResponse();
   renderEndModal();
+  renderTimer();
 }
 
 function isTargetable(player, card) {
   if (!card || !player.alive || player.isHuman || state.pendingResponse || state.current !== 0 || state.phase !== "play") return false;
+  if (card.key === "chai") return player.hand.length > 0;
   return needsTarget(card);
 }
 
