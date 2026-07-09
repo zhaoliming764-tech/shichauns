@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>视传杀</title>
-    <link rel="stylesheet" href="./styles.css?v=deal-anim-1" />
+    <link rel="stylesheet" href="./styles.css?v=identity-feedback-1" />
   </head>
   <body>
     <main class="app">
@@ -115,9 +115,19 @@
           <h2>战局记录</h2>
           <div id="log" class="log"></div>
         </aside>
+
+        <div id="endModal" class="end-modal hidden">
+          <div class="end-box">
+            <p class="end-kicker">身份局结算</p>
+            <h2 id="endTitle">胜利</h2>
+            <p id="endText"></p>
+            <div id="endRoles" class="end-roles"></div>
+            <button class="primary" type="button" onclick="window.location.reload()">再开一局</button>
+          </div>
+        </div>
       </section>
     </main>
 
-    <script src="./game.js?v=deal-anim-1"></script>
+    <script src="./game.js?v=identity-feedback-1"></script>
   </body>
 </html>

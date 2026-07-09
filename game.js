@@ -35,6 +35,9 @@ const state = {
   pendingResponse: null,
   groupQueue: [],
   gameOver: false,
+  winnerCamp: null,
+  resultTitle: "",
+  resultText: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -94,19 +97,20 @@ function initSetup() {
 function startGame() {
   const chosen = heroes[state.selectedHero];
   const rivals = shuffle(heroes.filter((hero) => hero.id !== chosen.id)).slice(0, 4);
-  const roles = ["主公", ...shuffle(rolesForFive.filter((role) => role !== "主公"))];
+  const roles = shuffle(rolesForFive);
   state.players = [chosen, ...rivals].map((hero, index) => ({
     ...hero,
     seat: index,
     role: roles[index],
-    hp: hero.maxHp + (index === 0 ? 1 : 0),
-    maxHp: hero.maxHp + (index === 0 ? 1 : 0),
+    hp: hero.maxHp + (roles[index] === "主公" ? 1 : 0),
+    maxHp: hero.maxHp + (roles[index] === "主公" ? 1 : 0),
     hand: [],
     equipment: [],
     alive: true,
     isHuman: index === 0,
     revived: false,
     marked: false,
+    hitFlash: false,
   }));
   state.deck = buildDeck();
   state.discard = [];
@@ -120,12 +124,27 @@ function startGame() {
   state.pendingResponse = null;
   state.groupQueue = [];
   state.gameOver = false;
+  state.winnerCamp = null;
+  state.resultTitle = "";
+  state.resultText = "";
   state.players.forEach((player) => draw(player, 4));
   $("setup").classList.add("hidden");
   $("game").classList.remove("hidden");
-  log("身份局开始。你是主公，击败所有反贼与内奸即可获胜。");
-  beginTurn(0);
+  const lord = getLord();
+  log(`身份局开始。你的身份是【${state.players[0].role}】，本局主公是 ${lord.name}。`);
+  beginTurn(lord.seat);
   window.setTimeout(animateOpeningDeal, 180);
+}
+
+function getLord() {
+  return state.players.find((player) => player.role === "主公") || state.players[0];
+}
+
+function getCamp(player) {
+  if (!player) return "unknown";
+  if (player.role === "反贼") return "rebel";
+  if (player.role === "内奸") return "traitor";
+  return "lord";
 }
 
 function beginTurn(index) {
@@ -350,12 +369,36 @@ function resolveDodge(useCard) {
 
 function applyDamage(target, amount, source) {
   target.hp -= amount;
+  triggerHitFeedback(target, amount);
   log(`${target.name} 受到 ${amount} 点压力，当前体力 ${Math.max(target.hp, 0)}/${target.maxHp}。`);
   if (source.skill === "构图") {
     draw(source, 1);
     log(`${source.name} 发动【构图】，摸 1 张牌。`);
   }
   if (target.hp <= 0) enterDying(target, source);
+}
+
+function triggerHitFeedback(target, amount) {
+  if (typeof document === "undefined") return;
+  target.hitFlash = true;
+  const table = document.querySelector(".table");
+  const targetCard = document.querySelector(`.player-card[data-seat="${target.seat}"]`);
+  table?.classList.add("screen-shake");
+  if (targetCard) {
+    const rect = targetCard.getBoundingClientRect();
+    const fx = document.createElement("div");
+    fx.className = "damage-pop";
+    fx.textContent = `-${amount}`;
+    fx.style.left = `${rect.left + rect.width / 2}px`;
+    fx.style.top = `${rect.top + rect.height * 0.34}px`;
+    document.body.appendChild(fx);
+    window.setTimeout(() => fx.remove(), 760);
+  }
+  window.setTimeout(() => {
+    target.hitFlash = false;
+    table?.classList.remove("screen-shake");
+    render();
+  }, 520);
 }
 
 function enterDying(target, source) {
@@ -572,28 +615,33 @@ function playAiAttack(ai) {
 
 function chooseAiTarget(ai) {
   const alive = state.players.filter((player) => player.alive && player !== ai);
-  if (ai.role === "反贼") return state.players[0];
-  if (ai.role === "忠臣") return alive.find((player) => player.role === "反贼") || alive[0];
+  const lord = getLord();
+  if (ai.role === "反贼") return lord.alive ? lord : alive[0];
+  if (ai.role === "忠臣" || ai.role === "主公") return alive.find((player) => player.role === "反贼") || alive.find((player) => player.role === "内奸") || alive[0];
   if (ai.role === "内奸") return alive.sort((a, b) => a.hp - b.hp)[0];
   return alive.find((player) => player.role === "反贼") || alive[0];
 }
 
 function checkWin() {
-  const lord = state.players[0];
+  const lord = getLord();
   const alive = state.players.filter((player) => player.alive);
   const rebels = state.players.some((player) => player.alive && player.role === "反贼");
   const traitor = state.players.some((player) => player.alive && player.role === "内奸");
   const onlyTraitor = alive.length === 1 && alive[0].role === "内奸";
-  if (onlyTraitor) endGame("内奸扫清全场，内奸获胜。");
-  else if (!lord.alive) endGame("主公倒下，反贼阵营获胜。");
-  else if (!rebels && !traitor) endGame("所有威胁清除，主公阵营获胜。");
+  if (onlyTraitor) endGame("内奸扫清全场，内奸获胜。", "traitor");
+  else if (!lord.alive) endGame("主公倒下，反贼阵营获胜。", "rebel");
+  else if (!rebels && !traitor) endGame("所有威胁清除，主公阵营获胜。", "lord");
 }
 
-function endGame(message) {
+function endGame(message, winnerCamp) {
   state.gameOver = true;
   state.phase = "ended";
   state.turnPhase = "结束";
   state.pendingResponse = null;
+  state.winnerCamp = winnerCamp;
+  const humanWon = getCamp(state.players[0]) === winnerCamp;
+  state.resultTitle = humanWon ? "胜利" : "失败";
+  state.resultText = `${message} 你的身份是【${state.players[0].role}】。`;
   log(message);
   render();
 }
@@ -621,15 +669,16 @@ function render() {
   const pendingCard = state.pendingCardIndex !== null ? state.players[0].hand[state.pendingCardIndex] : null;
   const renderPlayer = (player, index, revealRole = false) => {
     const targetable = isTargetable(player, pendingCard);
+    const showRole = revealRole || player.role === "主公" || !player.alive || state.gameOver;
     return `
-    <article class="player-card ${index === state.current ? "current" : ""} ${player.alive ? "" : "dead"} ${targetable ? "targetable" : ""}" data-seat="${player.seat}">
-      <div class="role-token ${revealRole ? "" : "hidden-role"}">${revealRole || !player.alive ? player.role.slice(0, 1) : "?"}</div>
+    <article class="player-card ${index === state.current ? "current" : ""} ${player.alive ? "" : "dead"} ${targetable ? "targetable" : ""} ${player.hitFlash ? "hit-flash" : ""}" data-seat="${player.seat}">
+      <div class="role-token ${showRole ? "" : "hidden-role"}">${showRole ? player.role.slice(0, 1) : "?"}</div>
       <div class="portrait cutout-portrait"><img src="./assets/processed/heroes/${player.art}.png" alt="${player.name}" /></div>
       <div class="player-info">
         <strong>${player.name}</strong>
         <span>${player.title} · ${player.skill}</span>
         <div class="meta">
-          <span>${player.isHuman || !player.alive ? player.role : "身份未明"}</span>
+          <span>${player.isHuman || showRole ? player.role : "身份未明"}</span>
           <span>${player.hand.length} 手牌</span>
         </div>
         <div class="meta">
@@ -647,6 +696,7 @@ function render() {
   renderTargetButtons(pendingCard);
   renderHand();
   renderResponse();
+  renderEndModal();
 }
 
 function isTargetable(player, card) {
@@ -672,7 +722,7 @@ function renderTargetButtons(card) {
   }
   $("targetRow").innerHTML = state.players
     .filter((player) => isTargetable(player, card))
-    .map((player) => `<button class="target" data-target="${player.seat}" type="button">${player.name} · ${player.role}</button>`)
+    .map((player) => `<button class="target" data-target="${player.seat}" type="button">${player.name}</button>`)
     .join("");
   document.querySelectorAll(".target").forEach((button) => {
     button.addEventListener("click", () => {
@@ -681,6 +731,23 @@ function renderTargetButtons(card) {
       playCard(state.pendingCardIndex, Number(button.dataset.target));
     });
   });
+}
+
+function renderEndModal() {
+  const modal = $("endModal");
+  if (!modal) return;
+  if (!state.gameOver) {
+    modal.classList.add("hidden");
+    return;
+  }
+  modal.classList.remove("hidden");
+  modal.classList.toggle("victory", state.resultTitle === "胜利");
+  modal.classList.toggle("defeat", state.resultTitle !== "胜利");
+  $("endTitle").textContent = state.resultTitle;
+  $("endText").textContent = state.resultText;
+  $("endRoles").innerHTML = state.players.map((player) => `
+    <span class="${player.alive ? "" : "dead-role"}">${player.name} / ${player.role}</span>
+  `).join("");
 }
 
 function renderHand() {
