@@ -28,6 +28,18 @@ const cardTemplates = [
   { key: "recycle", type: "tactic", name: "回收草稿", text: "摸 2 张牌，然后弃 1 张牌。", count: 4, art: "client-demand" },
   { key: "equip_tablet", type: "equip", name: "数位板", text: "装备后每回合可多用 1 次【提案突袭】。", count: 4, art: "drawing-tablet" },
   { key: "equip_palette", type: "equip", name: "色彩规范", text: "装备后每回合可多用 1 次【提案突袭】。", count: 3, art: "drawing-tablet" },
+  { key: "sha_red", type: "attack", name: "红稿突袭", text: "造成 1 点方案压力；可触发红色技能。", count: 7, art: "proposal-strike-v2", ext: "png", damageType: "normal", color: "red" },
+  { key: "sha_fire", type: "attack", name: "炎彩突袭", text: "造成 1 点视觉冲击；可引发项目联动。", count: 6, art: "proposal-strike-v2", ext: "png", damageType: "fire", color: "red" },
+  { key: "sha_thunder", type: "attack", name: "电光突袭", text: "造成 1 点紧急修改；可触发项目联动。", count: 6, art: "proposal-strike-v2", ext: "png", damageType: "thunder", color: "black" },
+  { key: "shan_red", type: "defense", name: "红稿回避", text: "响应一次突袭，抵消伤害。", count: 5, art: "quick-revision-v2", ext: "png", color: "red" },
+  { key: "steal", type: "tactic", name: "顺手取稿", text: "获得距离 1 以内角色的一张手牌。", count: 5, art: "client-demand" },
+  { key: "chain", type: "tactic", name: "项目联动", text: "横置一至两名角色，属性伤害会传导。", count: 5, art: "client-demand" },
+  { key: "team_heal", type: "heal", name: "全员提案会", text: "所有存活角色回复 1 点项目状态。", count: 3, art: "inspiration-supply-v2", ext: "png" },
+  { key: "weapon_crossbow", type: "equip", name: "连发数位板", text: "本回合可额外使用 1 张突袭牌；攻击范围 1。", count: 2, art: "drawing-tablet", equipSlot: "weapon", range: 1, extraAttacks: 1 },
+  { key: "weapon_spear", type: "equip", name: "双笔尖排版器", text: "可将两张手牌当作一张突袭牌。攻击范围 3。", count: 2, art: "drawing-tablet", equipSlot: "weapon", range: 3 },
+  { key: "armor_grid", type: "equip", name: "八方构图板", text: "受到突袭时，有机会自动生成临场改稿。", count: 2, art: "drawing-tablet", equipSlot: "armor" },
+  { key: "mount_fast", type: "equip", name: "极速渲染器", text: "攻击距离 +1。", count: 2, art: "drawing-tablet", equipSlot: "offenseMount", rangeBonus: 1 },
+  { key: "mount_safe", type: "equip", name: "安全留白", text: "其他角色攻击你的距离 +1。", count: 2, art: "drawing-tablet", equipSlot: "defenseMount", defenseBonus: 1 },
 ];
 
 const state = {
@@ -272,20 +284,41 @@ function nextTurn() {
 }
 
 function maxAttacks(player) {
-  return player.equipment.some((card) => ["equip_tablet", "equip_palette"].includes(card.key)) || player.skill === "布展" ? 2 : 1;
+  return 1 + player.equipment.reduce((total, card) => total + (card.extraAttacks || 0), 0) + (player.equipment.some((card) => ["equip_tablet", "equip_palette"].includes(card.key)) || player.skill === "布展" ? 1 : 0);
+}
+
+function attackRange(player) {
+  const weapon = player.equipment.find((card) => card.equipSlot === "weapon");
+  const mount = player.equipment.find((card) => card.equipSlot === "offenseMount");
+  return (weapon?.range || 1) + (mount?.rangeBonus || 0);
+}
+
+function seatDistance(source, target) {
+  const aliveSeats = state.players.filter((player) => player.alive).map((player) => player.seat);
+  const a = aliveSeats.indexOf(source.seat);
+  const b = aliveSeats.indexOf(target.seat);
+  if (a < 0 || b < 0) return 99;
+  const gap = Math.abs(a - b);
+  return Math.min(gap, aliveSeats.length - gap);
+}
+
+function inAttackRange(source, target) {
+  const defenseMount = target.equipment.find((card) => card.equipSlot === "defenseMount");
+  return seatDistance(source, target) <= attackRange(source) - (defenseMount?.defenseBonus || 0);
 }
 
 function canUseCard(player, card) {
   if (!card || state.pendingResponse || state.current !== 0 || state.phase !== "play" || state.gameOver) return false;
   if (card.key === "shan") return false;
-  if (card.key === "sha") return state.attackUsed < maxAttacks(player);
+  if (["sha", "sha_red", "sha_fire", "sha_thunder"].includes(card.key)) return state.attackUsed < maxAttacks(player);
   if (card.key === "tao") return player.hp < player.maxHp;
+  if (card.key === "team_heal") return state.players.some((item) => item.alive && item.hp < item.maxHp);
   if (needsTarget(card)) return hasValidTarget(card);
   return true;
 }
 
 function needsTarget(card) {
-  return card.key === "sha" || card.key === "chai";
+  return ["sha", "sha_red", "sha_fire", "sha_thunder", "chai", "steal", "chain"].includes(card.key);
 }
 
 function hasValidTarget(card) {
@@ -311,7 +344,7 @@ function playCard(cardIndex, targetIndex = null) {
   }
   animatePlayedCard(card, { cardIndex, sourceSeat: player.seat, targetSeat: targetIndex });
   player.hand.splice(cardIndex, 1);
-  if (card.key === "sha") state.attackUsed += 1;
+  if (["sha", "sha_red", "sha_fire", "sha_thunder"].includes(card.key)) state.attackUsed += 1;
   resolveCard(player, card, targetIndex);
   if (card.type !== "equip") {
     state.discard.push(card);
@@ -333,9 +366,12 @@ function showTargets(cardIndex) {
 }
 
 function resolveCard(user, card, targetIndex) {
-  if (card.key === "sha") attack(user, state.players[targetIndex], false);
+  if (["sha", "sha_red", "sha_fire", "sha_thunder"].includes(card.key)) attack(user, state.players[targetIndex], false, card.damageType || "normal");
   if (card.key === "tao") usePeach(user);
   if (card.key === "chai") dismantle(user, state.players[targetIndex]);
+  if (card.key === "steal") stealCard(user, state.players[targetIndex]);
+  if (card.key === "chain") toggleChain(state.players[targetIndex]);
+  if (card.key === "team_heal") state.players.filter((player) => player.alive).forEach((player) => usePeach(player));
   if (card.key === "nanman") startGroupAttack(user);
   if (card.key === "wuzhong") {
     draw(user, 2);
@@ -350,8 +386,8 @@ function resolveCard(user, card, targetIndex) {
     if (user.hand.length) state.discard.push(user.hand.pop());
     log(`${user.name} 使用【回收草稿】，摸 2 张牌并弃 1 张牌。`);
   }
-  if (["equip_tablet", "equip_palette"].includes(card.key)) {
-    user.equipment = user.equipment.filter((item) => ["equip_tablet", "equip_palette"].includes(item.key));
+  if (card.type === "equip") {
+    user.equipment = user.equipment.filter((item) => item.equipSlot !== card.equipSlot && !(card.equipSlot === undefined && ["equip_tablet", "equip_palette"].includes(item.key)));
     user.equipment.push(card);
     log(`${user.name} 装备【${card.name}】。`);
   }
@@ -494,20 +530,25 @@ function animateDealCard(deckRect, targetElement, offset = 0, bonus = false) {
   window.setTimeout(() => fx.remove(), 920);
 }
 
-function attack(user, target, group = false) {
+function attack(user, target, group = false, damageType = "normal") {
   if (!target?.alive) return;
+  if (!group && !inAttackRange(user, target)) {
+    log(`${target.name} 超出攻击范围，当前距离 ${seatDistance(user, target)}。`);
+    return;
+  }
   if (target.skill === "转场" && !target.marked) {
     draw(target, 1);
     target.marked = true;
     log(`${target.name} 发动【转场】，摸 1 张牌。`);
   }
-  const dodgeIndex = target.hand.findIndex((card) => card.key === "shan");
+  const dodgeIndex = target.hand.findIndex((card) => ["shan", "shan_red"].includes(card.key));
   if (target.isHuman && dodgeIndex >= 0) {
     state.pendingResponse = {
       kind: "dodge",
       sourceSeat: user.seat,
       targetSeat: target.seat,
       group,
+      damageType,
     };
     log(`${target.name} 需要响应【临场改稿】。`);
     render();
@@ -525,7 +566,7 @@ function attack(user, target, group = false) {
     }
     return;
   }
-  applyDamage(target, 1, user);
+  applyDamage(target, 1, user, damageType);
 }
 
 function resolveDodge(useCard) {
@@ -535,7 +576,7 @@ function resolveDodge(useCard) {
   const source = state.players[response.sourceSeat];
   const target = state.players[response.targetSeat];
   if (useCard) {
-    const index = target.hand.findIndex((card) => card.key === "shan");
+    const index = target.hand.findIndex((card) => ["shan", "shan_red"].includes(card.key));
     if (index >= 0) {
       const dodgeCard = target.hand.splice(index, 1)[0];
       state.discard.push(dodgeCard);
@@ -547,16 +588,22 @@ function resolveDodge(useCard) {
       }
     }
   } else {
-    applyDamage(target, 1, source);
+    applyDamage(target, 1, source, response.damageType || "normal");
   }
   state.pendingResponse = null;
   continueAfterResponse();
 }
 
-function applyDamage(target, amount, source) {
+function applyDamage(target, amount, source, damageType = "normal", visited = new Set()) {
+  if (!target?.alive || visited.has(target.seat)) return;
+  visited.add(target.seat);
+  if (damageType === "fire" && target.equipment.some((card) => card.key === "armor_grid")) amount += 1;
   target.hp -= amount;
   triggerHitFeedback(target, amount);
-  log(`${target.name} 受到 ${amount} 点压力，当前体力 ${Math.max(target.hp, 0)}/${target.maxHp}。`);
+  log(`${target.name} 受到 ${amount} 点${damageType === "fire" ? "视觉冲击" : damageType === "thunder" ? "紧急修改" : "方案压力"}，当前体力 ${Math.max(target.hp, 0)}/${target.maxHp}。`);
+  if (target.marked && damageType !== "normal") {
+    state.players.filter((player) => player.alive && player.marked && player !== target).forEach((linked) => applyDamage(linked, amount, source, damageType, visited));
+  }
   if (source.skill === "构图") {
     draw(source, 1);
     log(`${source.name} 发动【构图】，摸 1 张牌。`);
@@ -684,6 +731,19 @@ function dismantle(user, target) {
   } else {
     log(`${target.name} 没有手牌，【甲方需求】落空。`);
   }
+}
+
+function stealCard(user, target) {
+  if (!target?.hand.length) return log(`${target.name} 没有可取的稿件。`);
+  const index = Math.floor(Math.random() * target.hand.length);
+  user.hand.push(target.hand.splice(index, 1)[0]);
+  log(`${user.name} 使用【顺手取稿】，获得 ${target.name} 1 张手牌。`);
+}
+
+function toggleChain(target) {
+  if (!target?.alive) return;
+  target.marked = !target.marked;
+  log(`${target.name} ${target.marked ? "进入项目联动" : "解除项目联动"}。`);
 }
 
 function startGroupAttack(user) {
@@ -867,8 +927,27 @@ function aiPlay() {
   playAiHeal(ai);
   playAiBrainstorm(ai);
   playAiTactic(ai);
+  playAiNewTactics(ai);
   playAiAttack(ai);
   if (!state.pendingResponse) finishAiTurn();
+}
+
+function playAiNewTactics(ai) {
+  const steal = takeCard(ai, (item) => item.key === "steal");
+  const stealTarget = chooseAiTarget(ai, (player) => player.hand.length > 0 && inAttackRange(ai, player));
+  if (steal && stealTarget) {
+    resolveCard(ai, steal, stealTarget.seat);
+    state.discard.push(steal);
+    addPlayedCard(steal);
+  } else if (steal) ai.hand.push(steal);
+
+  const chain = takeCard(ai, (item) => item.key === "chain");
+  const chainTarget = chooseAiTarget(ai);
+  if (chain && chainTarget) {
+    resolveCard(ai, chain, chainTarget.seat);
+    state.discard.push(chain);
+    addPlayedCard(chain);
+  } else if (chain) ai.hand.push(chain);
 }
 
 function finishAiTurn() {
@@ -923,12 +1002,30 @@ function playAiTactic(ai) {
   resolveCard(ai, card, target.seat);
   state.discard.push(card);
   addPlayedCard(card);
+
+  const steal = takeCard(ai, (item) => item.key === "steal");
+  const stealTarget = chooseAiTarget(ai, (player) => player.hand.length > 0 && inAttackRange(ai, player));
+  if (steal && stealTarget) {
+    animatePlayedCard(steal, { sourceSeat: ai.seat, targetSeat: stealTarget.seat });
+    resolveCard(ai, steal, stealTarget.seat);
+    state.discard.push(steal);
+    addPlayedCard(steal);
+  } else if (steal) ai.hand.push(steal);
+
+  const chain = takeCard(ai, (item) => item.key === "chain");
+  const chainTarget = chooseAiTarget(ai);
+  if (chain && chainTarget) {
+    animatePlayedCard(chain, { sourceSeat: ai.seat, targetSeat: chainTarget.seat });
+    resolveCard(ai, chain, chainTarget.seat);
+    state.discard.push(chain);
+    addPlayedCard(chain);
+  } else if (chain) ai.hand.push(chain);
 }
 
 function playAiAttack(ai) {
   const attackLimit = maxAttacks(ai);
   for (let used = 0; used < attackLimit; used += 1) {
-    const card = takeCard(ai, (item) => item.key === "sha");
+    const card = takeCard(ai, (item) => ["sha", "sha_red", "sha_fire", "sha_thunder"].includes(item.key));
     if (!card) return;
     const target = chooseAiTarget(ai);
     animatePlayedCard(card, { sourceSeat: ai.seat, targetSeat: target.seat });
@@ -1042,6 +1139,8 @@ function render() {
 function isTargetable(player, card) {
   if (!card || !player.alive || player.isHuman || state.pendingResponse || state.current !== 0 || state.phase !== "play") return false;
   if (card.key === "chai") return player.hand.length > 0;
+  if (card.key === "steal") return player.hand.length > 0 && seatDistance(state.players[0], player) <= 1;
+  if (["sha", "sha_red", "sha_fire", "sha_thunder"].includes(card.key)) return inAttackRange(state.players[0], player);
   return needsTarget(card);
 }
 
