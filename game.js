@@ -1,3 +1,7 @@
+if (typeof window !== "undefined" && typeof URLSearchParams !== "undefined" && new URLSearchParams(window.location.search).has("fullscreen")) {
+  document.documentElement.classList.add("preview-fullscreen");
+}
+
 const heroes = [
   { id: "ma", art: "ma-xinyu", name: "马新宇", title: "版式奇谋", maxHp: 4, skill: "对齐", desc: "每回合一次，摸 1 张牌并弃 1 张牌。" },
   { id: "zyp", art: "zeng-yupeng-v2", name: "曾宇鹏", title: "镜头调度", maxHp: 4, skill: "构图", desc: "【提案突袭】造成伤害后摸 1 张牌。" },
@@ -10,17 +14,20 @@ const heroes = [
 
 const rolesForFive = ["主公", "忠臣", "反贼", "反贼", "内奸"];
 const phaseSteps = ["准备", "判定", "摸牌", "出牌", "弃牌", "结束"];
-const playTimeLimit = 45;
+const playTimeLimit = 60;
 const discardTimeLimit = 20;
-const responseTimeLimit = 12;
+const responseTimeLimit = 18;
 const cardTemplates = [
-  { key: "sha", type: "attack", name: "提案突袭", text: "对一名角色造成 1 点创意压力。", count: 18, art: "proposal-strike" },
-  { key: "shan", type: "defense", name: "临场改稿", text: "响应突袭，抵消一次伤害。", count: 14, art: "quick-revision" },
-  { key: "tao", type: "heal", name: "灵感补给", text: "回复 1 点体力，濒危时也可使用。", count: 8, art: "inspiration-supply" },
+  { key: "sha", type: "attack", name: "提案突袭", text: "对一名角色造成 1 点创意压力。", count: 18, art: "proposal-strike-v2", ext: "png" },
+  { key: "shan", type: "defense", name: "临场改稿", text: "响应突袭，抵消一次伤害。", count: 14, art: "quick-revision-v2", ext: "png" },
+  { key: "tao", type: "heal", name: "灵感补给", text: "回复 1 点体力，濒危时也可使用。", count: 8, art: "inspiration-supply-v2", ext: "png" },
   { key: "chai", type: "tactic", name: "甲方需求", text: "指定一名角色弃 1 张手牌。", count: 7, art: "client-demand" },
   { key: "nanman", type: "tactic", name: "赶稿通宵", text: "所有其他角色各需响应一次突袭。", count: 5, art: "deadline-night" },
-  { key: "wuzhong", type: "tactic", name: "头脑风暴", text: "摸 2 张牌。", count: 6, art: "brainstorm" },
+  { key: "wuzhong", type: "tactic", name: "头脑风暴", text: "摸 2 张牌。", count: 6, art: "brainstorm-v2", ext: "png" },
+  { key: "draw_one", type: "tactic", name: "灵感闪现", text: "摸 1 张牌。", count: 6, art: "brainstorm-v2", ext: "png" },
+  { key: "recycle", type: "tactic", name: "回收草稿", text: "摸 2 张牌，然后弃 1 张牌。", count: 4, art: "client-demand" },
   { key: "equip_tablet", type: "equip", name: "数位板", text: "装备后每回合可多用 1 次【提案突袭】。", count: 4, art: "drawing-tablet" },
+  { key: "equip_palette", type: "equip", name: "色彩规范", text: "装备后每回合可多用 1 次【提案突袭】。", count: 3, art: "drawing-tablet" },
 ];
 
 const state = {
@@ -96,7 +103,7 @@ function draw(player, count) {
       const deckRect = deckPile?.getBoundingClientRect();
       if (!deckRect || !target) return;
       drawn.forEach((_, index) => {
-        window.setTimeout(() => animateDealCard(deckRect, target, index - (drawn.length - 1) / 2, true), index * 170);
+        window.setTimeout(() => animateDealCard(deckRect, target, index - (drawn.length - 1) / 2, true), index * 260);
       });
     }, 60);
   }
@@ -165,13 +172,15 @@ function startGame() {
   playIdentityDrawAnimation(() => {
     $("game").classList.remove("hidden");
     state.phase = "opening";
-    state.current = lord.seat;
+    // Let the human player take the first actionable turn after the identity reveal.
+    // Roles remain random; this prevents the opening AI turn from looking like a locked game.
+    state.current = 0;
     state.turnPhase = "准备";
     render();
     window.setTimeout(() => {
       animateOpeningDeal(() => {
         state.openingLocked = false;
-        beginTurn(lord.seat);
+      beginTurn(0);
       });
     }, 180);
   });
@@ -263,7 +272,7 @@ function nextTurn() {
 }
 
 function maxAttacks(player) {
-  return player.equipment.some((card) => card.key === "equip_tablet") || player.skill === "布展" ? 2 : 1;
+  return player.equipment.some((card) => ["equip_tablet", "equip_palette"].includes(card.key)) || player.skill === "布展" ? 2 : 1;
 }
 
 function canUseCard(player, card) {
@@ -332,17 +341,26 @@ function resolveCard(user, card, targetIndex) {
     draw(user, 2);
     log(`${user.name} 使用【头脑风暴】，摸 2 张牌。`);
   }
-  if (card.key === "equip_tablet") {
-    user.equipment = user.equipment.filter((item) => item.key !== "equip_tablet");
+  if (card.key === "draw_one") {
+    draw(user, 1);
+    log(`${user.name} 使用【灵感闪现】，摸 1 张牌。`);
+  }
+  if (card.key === "recycle") {
+    draw(user, 2);
+    if (user.hand.length) state.discard.push(user.hand.pop());
+    log(`${user.name} 使用【回收草稿】，摸 2 张牌并弃 1 张牌。`);
+  }
+  if (["equip_tablet", "equip_palette"].includes(card.key)) {
+    user.equipment = user.equipment.filter((item) => ["equip_tablet", "equip_palette"].includes(item.key));
     user.equipment.push(card);
-    log(`${user.name} 装备【数位板】。`);
+    log(`${user.name} 装备【${card.name}】。`);
   }
 }
 
 function addPlayedCard(card) {
   if (!card) return;
   state.playedCards = [
-    { id: `${card.id}-played-${Date.now()}`, name: card.name, type: card.type, art: card.art, rank: card.rank, suit: card.suit },
+    { id: `${card.id}-played-${Date.now()}`, name: card.name, type: card.type, art: card.art, ext: card.ext || "jpg", rank: card.rank, suit: card.suit },
     ...state.playedCards,
   ].slice(0, 4);
 }
@@ -363,7 +381,7 @@ function animatePlayedCard(card, options = {}) {
   const fx = document.createElement("div");
   fx.className = `play-fx-card ${card.type}`;
   fx.innerHTML = `
-    <span class="play-fx-art" style="background-image: url('./assets/processed/cards/${card.art}.jpg')"></span>
+    <span class="play-fx-art" style="background-image: url('./assets/processed/cards/${card.art}.${card.ext || "jpg"}')"></span>
     <strong>${card.name}</strong>
   `;
   const startX = sourceRect.left + sourceRect.width / 2 - 42;
@@ -417,7 +435,7 @@ function renderPlayedCards() {
   const holder = $("playedCards");
   if (!holder) return;
   holder.innerHTML = state.playedCards.map((card, index) => `
-    <span class="${card.type}" style="--i:${index}; background-image: url('./assets/processed/cards/${card.art}.jpg')">
+    <span class="${card.type}" style="--i:${index}; background-image: url('./assets/processed/cards/${card.art}.${card.ext || "jpg"}')">
       <b>${card.name}</b>
       <em>${card.rank || ""}${card.suit || ""}</em>
     </span>
@@ -450,13 +468,13 @@ function animateOpeningDeal(done) {
   }
 
   dealTargets.forEach((target, index) => {
-    window.setTimeout(() => {
-      animateDealCard(deckRect, target.element, target.offset, target.bonus);
-    }, index * 78);
+      window.setTimeout(() => {
+        animateDealCard(deckRect, target.element, target.offset, target.bonus);
+      }, index * 170);
   });
   window.setTimeout(() => {
     if (typeof done === "function") done();
-  }, dealTargets.length * 78 + 980);
+  }, dealTargets.length * 170 + 1500);
 }
 
 function animateDealCard(deckRect, targetElement, offset = 0, bonus = false) {
@@ -1116,7 +1134,7 @@ function renderHand() {
     return `
       <button class="card ${card.type} ${selected}" style="--rot:${rot}deg; --lift:${lift}px" data-card="${index}" ${disabled ? "disabled" : ""} type="button">
         <span class="card-corner"><b>${card.rank}</b><em>${card.suit}</em></span>
-        <span class="card-art" style="background-image: url('./assets/processed/cards/${card.art}.jpg')"></span>
+        <span class="card-art" style="background-image: url('./assets/processed/cards/${card.art}.${card.ext || "jpg"}')"></span>
         <strong>${card.name}</strong>
         <span class="card-desc">${card.text}</span>
       </button>
@@ -1154,7 +1172,7 @@ function renderResponse() {
     $("responseTitle").textContent = "请打出【临场改稿】";
     $("responseText").innerHTML = `
       <span class="response-card-preview defense">
-        <i style="background-image: url('./assets/processed/cards/quick-revision.jpg')"></i>
+        <i style="background-image: url('./assets/processed/cards/quick-revision-v2.png')"></i>
         <strong>临场改稿</strong>
       </span>
       <em>${target.name} 正被【提案突袭】指定。打出【临场改稿】可抵消，否则受到 1 点压力。</em>
@@ -1170,7 +1188,7 @@ function renderResponse() {
     $("responseTitle").textContent = "濒危求救";
     $("responseText").innerHTML = `
       <span class="response-card-preview heal">
-        <i style="background-image: url('./assets/processed/cards/inspiration-supply.jpg')"></i>
+        <i style="background-image: url('./assets/processed/cards/inspiration-supply-v2.png')"></i>
         <strong>灵感补给</strong>
       </span>
       <em>${target.name} 体力降至 0。使用【灵感补给】脱离濒危。</em>

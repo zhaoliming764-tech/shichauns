@@ -2906,9 +2906,72 @@ body {
   .card { min-height: 108px !important; height: 108px !important; max-height: 108px !important; }
 }
 
+.preview-fullscreen body { overflow: hidden !important; }
+.preview-fullscreen .app { min-height: 100vh !important; }
+.preview-fullscreen .topbar { display: none !important; }
+.preview-fullscreen .game { min-height: 100vh !important; }
+.preview-fullscreen .battlefield { min-height: 100vh !important; }
+.preview-fullscreen .log-panel { max-height: calc(100vh - 24px) !important; }
+
 @media (max-width: 899px) {
   .battlefield { background-position: center bottom !important; }
   .hand-wrap { grid-template-rows: 28px minmax(0, 1fr) 48px !important; padding: 6px 8px 0 !important; }
   .actions { min-height: 48px !important; }
   .skill-side-btn { left: 4px !important; bottom: 6px !important; width: 108px !important; min-height: 38px !important; }
+}
+
+/* Spacious portrait hand and slower, readable card feedback. */
+.player-zone { height: clamp(250px, 34vh, 310px) !important; }
+.hand-wrap { grid-template-rows: 32px minmax(0, 1fr) 54px !important; }
+.hand { min-height: 0 !important; padding: 10px 20px 14px !important; align-items: flex-end !important; }
+.card {
+  flex: 0 0 clamp(118px, 9vw, 154px) !important;
+  width: clamp(118px, 9vw, 154px) !important;
+  min-width: 118px !important;
+  height: clamp(154px, 22vh, 202px) !important;
+  min-height: clamp(154px, 22vh, 202px) !important;
+  aspect-ratio: 0.68 !important;
+  margin-left: clamp(-50px, -3vw, -28px) !important;
+}
+.card:first-child { margin-left: 0 !important; }
+.deal-fx-card { animation-duration: 1200ms !important; }
+.play-fx-card { animation-duration: 2200ms !important; }
+.piles { top: 46% !important; }
+.pile { width: clamp(102px, 9vw, 140px) !important; height: clamp(144px, 21vh, 188px) !important; }
+
+@media (max-height: 760px) and (min-width: 900px) {
+  .player-zone { height: 270px !important; }
+  .hand-wrap { grid-template-rows: 28px minmax(0, 1fr) 48px !important; }
+  .card { width: 124px !important; min-width: 124px !important; height: 128px !important; min-height: 128px !important; }
+}
+
+/* Keep the playable hand inside the first viewport in fullscreen mode. */
+.preview-fullscreen .battlefield {
+  grid-template-rows: 108px minmax(0, 1fr) 224px !important;
+}
+.preview-fullscreen .player-zone {
+  height: 224px !important;
+  min-height: 0 !important;
+  bottom: 0 !important;
+}
+.preview-fullscreen .hand-wrap {
+  grid-template-rows: 26px minmax(0, 1fr) 44px !important;
+  padding: 4px 8px 0 !important;
+}
+.preview-fullscreen .hand {
+  padding: 4px 12px 6px !important;
+}
+.preview-fullscreen .card {
+  width: clamp(106px, 8.2vw, 132px) !important;
+  min-width: 106px !important;
+  height: clamp(142px, 17vh, 166px) !important;
+  min-height: 142px !important;
+}
+.preview-fullscreen .actions {
+  min-height: 44px !important;
+  padding-top: 2px !important;
+}
+.preview-fullscreen .actions .primary,
+.preview-fullscreen .actions .secondary {
+  min-height: 34px !important;
 }

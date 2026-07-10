@@ -39,7 +39,7 @@ const phaseCount = vm.runInContext("phaseSteps.length", context);
 const cardKeys = vm.runInContext("cardTemplates.map(card => card.key).join(',')", context);
 
 if (heroCount !== 7) throw new Error(`expected 7 heroes, got ${heroCount}`);
-if (deckSize !== 62) throw new Error(`expected 62 cards, got ${deckSize}`);
+if (deckSize !== 75) throw new Error(`expected 75 cards, got ${deckSize}`);
 if (phaseCount !== 6) throw new Error(`expected 6 phases, got ${phaseCount}`);
 for (const key of ["sha", "shan", "tao", "chai", "nanman", "wuzhong", "equip_tablet"]) {
   if (!cardKeys.includes(key)) throw new Error(`missing card key ${key}`);
