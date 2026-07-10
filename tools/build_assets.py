@@ -1,5 +1,5 @@
 from pathlib import Path
-from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps
+from PIL import Image, ImageChops, ImageFilter, ImageOps
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "assets"
@@ -129,48 +129,6 @@ def build_ui_assets():
             crop.save(PROCESSED / "ui" / name, quality=92)
 
 
-def save_ui_crop(source, name, box, size, quality=94):
-    """Crop a generated UI master into a stable, code-addressable skin asset."""
-    crop = source.crop(crop_box_by_ratio(source, *box))
-    crop = ImageOps.fit(crop, size, method=Image.Resampling.LANCZOS)
-    target = PROCESSED / "ui" / name
-    if target.suffix.lower() in {".jpg", ".jpeg"}:
-        crop.convert("RGB").save(target, quality=quality, optimize=True)
-    else:
-        crop.convert("RGBA").save(target, optimize=True)
-    return crop
-
-
-def build_commercial_skin():
-    """Build the high-coverage UI skin from one generated 16:9 master image.
-
-    Replace assets/generated/ui-art-table-v4.png with another layout-compatible
-    generated master and rerun this script to reskin most of the game at once.
-    """
-    master_path = ASSETS / "generated" / "ui-art-table-v4.png"
-    if not master_path.exists():
-        print(f"commercial skin skipped: missing {master_path}")
-        return
-
-    master = Image.open(master_path).convert("RGB")
-    # The crop map deliberately follows semantic regions in the generated board:
-    # framed seat, central parchment, bottom tray, top plaque and right-side rail.
-    save_ui_crop(master, "skin-board.jpg", (0.0, 0.0, 1.0, 1.0), (1920, 1080))
-    save_ui_crop(master, "skin-player-frame.png", (0.078, 0.025, 0.188, 0.165), (420, 560))
-    save_ui_crop(master, "skin-card-frame.png", (0.078, 0.18, 0.188, 0.37), (420, 600))
-    save_ui_crop(master, "skin-hand-tray.jpg", (0.205, 0.785, 0.805, 0.995), (1600, 420))
-    save_ui_crop(master, "skin-log-panel.jpg", (0.82, 0.16, 0.995, 0.765), (560, 1000))
-    save_ui_crop(master, "skin-phase-plaque.png", (0.31, 0.025, 0.69, 0.14), (1200, 230))
-    save_ui_crop(master, "skin-modal.jpg", (0.19, 0.12, 0.81, 0.78), (1200, 760))
-    button = save_ui_crop(master, "skin-button-gold.png", (0.315, 0.035, 0.565, 0.125), (900, 180))
-    red = ImageEnhance.Color(button).enhance(1.65)
-    red = ImageEnhance.Brightness(red).enhance(0.72)
-    red.save(PROCESSED / "ui" / "skin-button-red.png", optimize=True)
-    dark = ImageEnhance.Color(button).enhance(0.35)
-    dark = ImageEnhance.Brightness(dark).enhance(0.45)
-    dark.save(PROCESSED / "ui" / "skin-button-dark.png", optimize=True)
-
-
 def build_card_art():
     sheet = Image.open(ASSETS / "cards" / "card-art-sheet.png").convert("RGB")
     width, height = sheet.size
@@ -188,7 +146,6 @@ def main():
     ensure_dirs()
     build_character_cutouts()
     build_ui_assets()
-    build_commercial_skin()
     build_card_art()
     print("asset build complete")
 
