@@ -2853,9 +2853,9 @@ body {
 .card {
   position: relative !important;
   z-index: 4 !important;
-  flex: 0 1 clamp(88px, 7vw, 116px) !important;
-  min-width: 74px !important;
-  min-height: clamp(106px, 14vh, 132px) !important;
+  flex: 0 1 clamp(102px, 8vw, 132px) !important;
+  min-width: 88px !important;
+  min-height: clamp(118px, 15.5vh, 146px) !important;
   margin-bottom: 0 !important;
 }
 
@@ -2870,7 +2870,8 @@ body {
   .actions { min-height: 48px !important; padding-top: 5px !important; }
   .actions .primary, .actions .secondary { min-height: 34px !important; }
   .hand { padding-bottom: 4px !important; }
-  .card { min-height: 84px !important; height: 84px !important; max-height: 84px !important; }
+  .player-zone { height: clamp(202px, 35vh, 232px) !important; }
+  .card { min-height: 96px !important; height: 96px !important; max-height: 96px !important; }
 }
 
 @media (max-width: 899px) {
