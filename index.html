@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>视传杀</title>
-    <link rel="stylesheet" href="./styles.css?v=play-feel-2" />
+    <link rel="stylesheet" href="./styles.css?v=hand-art-2" />
   </head>
   <body>
     <main class="app">
@@ -90,11 +90,7 @@
                 <strong id="discardPileCount">0</strong>
               </div>
             </div>
-            <div class="played-cards" aria-hidden="true">
-              <span style="background-image: url('./assets/processed/cards/proposal-strike.jpg')"></span>
-              <span style="background-image: url('./assets/processed/cards/quick-revision.jpg')"></span>
-              <span style="background-image: url('./assets/processed/cards/inspiration-supply.jpg')"></span>
-            </div>
+            <div id="playedCards" class="played-cards" aria-hidden="true"></div>
             <div id="targetRow" class="target-row"></div>
 
             <div id="responseModal" class="response-modal hidden">
@@ -140,6 +136,7 @@
       </section>
     </main>
 
-    <script src="./game.js?v=play-feel-2"></script>
+    <div id="playerTooltip" class="player-tooltip hidden"></div>
+    <script src="./game.js?v=hand-art-2"></script>
   </body>
 </html>

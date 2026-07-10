@@ -11,6 +11,7 @@ const heroes = [
 const rolesForFive = ["主公", "忠臣", "反贼", "反贼", "内奸"];
 const phaseSteps = ["准备", "判定", "摸牌", "出牌", "弃牌", "结束"];
 const playTimeLimit = 45;
+const discardTimeLimit = 20;
 const responseTimeLimit = 12;
 const cardTemplates = [
   { key: "sha", type: "attack", name: "提案突袭", text: "对一名角色造成 1 点创意压力。", count: 18, art: "proposal-strike" },
@@ -34,12 +35,15 @@ const state = {
   skillUsed: false,
   attackUsed: 0,
   pendingCardIndex: null,
+  discardSelection: [],
   pendingResponse: null,
   groupQueue: [],
   gameOver: false,
   winnerCamp: null,
   resultTitle: "",
   resultText: "",
+  playedCards: [],
+  openingLocked: false,
   timer: null,
   timerMode: "",
   timerLeft: 0,
@@ -128,20 +132,31 @@ function startGame() {
   state.skillUsed = false;
   state.attackUsed = 0;
   state.pendingCardIndex = null;
+  state.discardSelection = [];
   state.pendingResponse = null;
   state.groupQueue = [];
   state.gameOver = false;
   state.winnerCamp = null;
   state.resultTitle = "";
   state.resultText = "";
+  state.playedCards = [];
+  state.openingLocked = true;
   state.players.forEach((player) => draw(player, 4));
   $("setup").classList.add("hidden");
   const lord = getLord();
   log(`身份局开始。你的身份是【${state.players[0].role}】，本局主公是 ${lord.name}。`);
   playIdentityDrawAnimation(() => {
     $("game").classList.remove("hidden");
-    beginTurn(lord.seat);
-    window.setTimeout(animateOpeningDeal, 180);
+    state.phase = "opening";
+    state.current = lord.seat;
+    state.turnPhase = "准备";
+    render();
+    window.setTimeout(() => {
+      animateOpeningDeal(() => {
+        state.openingLocked = false;
+        beginTurn(lord.seat);
+      });
+    }, 180);
   });
 }
 
@@ -193,7 +208,7 @@ function playIdentityDrawAnimation(done) {
 }
 
 function beginTurn(index) {
-  if (state.gameOver) return;
+  if (state.gameOver || state.openingLocked) return;
   stopTimer();
   const player = state.players[index];
   if (!player.alive) return nextTurn();
@@ -201,6 +216,7 @@ function beginTurn(index) {
   state.skillUsed = false;
   state.attackUsed = 0;
   state.pendingCardIndex = null;
+  state.discardSelection = [];
   state.pendingResponse = null;
   state.groupQueue = [];
   state.phase = player.isHuman ? "play" : "ai";
@@ -267,11 +283,14 @@ function playCard(cardIndex, targetIndex = null) {
     render();
     return;
   }
-  animatePlayedCard(card, { cardIndex, sourceSeat: player.seat });
+  animatePlayedCard(card, { cardIndex, sourceSeat: player.seat, targetSeat: targetIndex });
   player.hand.splice(cardIndex, 1);
   if (card.key === "sha") state.attackUsed += 1;
   resolveCard(player, card, targetIndex);
-  if (card.type !== "equip") state.discard.push(card);
+  if (card.type !== "equip") {
+    state.discard.push(card);
+    addPlayedCard(card);
+  }
   state.pendingCardIndex = null;
   checkWin();
   render();
@@ -303,6 +322,14 @@ function resolveCard(user, card, targetIndex) {
   }
 }
 
+function addPlayedCard(card) {
+  if (!card) return;
+  state.playedCards = [
+    { id: `${card.id}-played-${Date.now()}`, name: card.name, type: card.type, art: card.art, rank: card.rank, suit: card.suit },
+    ...state.playedCards,
+  ].slice(0, 4);
+}
+
 function animatePlayedCard(card, options = {}) {
   if (!card || typeof document === "undefined") return;
   const table = document.querySelector(".table");
@@ -313,6 +340,7 @@ function animatePlayedCard(card, options = {}) {
       : document.querySelector(`.player-card[data-seat="${options.sourceSeat}"]`);
   const sourceRect = source?.getBoundingClientRect();
   const tableRect = table.getBoundingClientRect();
+  const discardRect = document.querySelector(".discard-pile")?.getBoundingClientRect();
   if (!sourceRect) return;
 
   const fx = document.createElement("div");
@@ -325,19 +353,71 @@ function animatePlayedCard(card, options = {}) {
   const startY = sourceRect.top + sourceRect.height / 2 - 58;
   const endX = tableRect.left + tableRect.width / 2 - 42;
   const endY = tableRect.top + tableRect.height / 2 - 58;
+  const discardX = (discardRect ? discardRect.left + discardRect.width / 2 : endX + 120) - 42;
+  const discardY = (discardRect ? discardRect.top + discardRect.height / 2 : endY) - 58;
   fx.style.left = `${startX}px`;
   fx.style.top = `${startY}px`;
   fx.style.setProperty("--dx", `${endX - startX}px`);
   fx.style.setProperty("--dy", `${endY - startY}px`);
+  fx.style.setProperty("--dx2", `${discardX - startX}px`);
+  fx.style.setProperty("--dy2", `${discardY - startY}px`);
   document.body.appendChild(fx);
-  window.setTimeout(() => fx.remove(), 760);
+  if (options.targetSeat !== undefined && options.targetSeat !== null) {
+    window.setTimeout(() => drawTargetLine(options.sourceSeat, options.targetSeat), 520);
+  }
+  window.setTimeout(() => fx.remove(), 1420);
 }
 
-function animateOpeningDeal() {
-  if (typeof document === "undefined" || !state.players.length) return;
+function drawTargetLine(sourceSeat, targetSeat) {
+  if (typeof document === "undefined" || targetSeat === undefined || targetSeat === null) return;
+  const table = document.querySelector(".table");
+  const source =
+    sourceSeat === 0
+      ? document.querySelector(".self-player .player-card")
+      : document.querySelector(`.player-card[data-seat="${sourceSeat}"]`);
+  const target = document.querySelector(`.player-card[data-seat="${targetSeat}"]`);
+  if (!table || !source || !target) return;
+  const tableRect = table.getBoundingClientRect();
+  const sourceRect = source.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const x1 = sourceRect.left + sourceRect.width / 2 - tableRect.left;
+  const y1 = sourceRect.top + sourceRect.height / 2 - tableRect.top;
+  const x2 = targetRect.left + targetRect.width / 2 - tableRect.left;
+  const y2 = targetRect.top + targetRect.height / 2 - tableRect.top;
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+  const line = document.createElement("div");
+  line.className = "target-line-fx";
+  line.style.left = `${x1}px`;
+  line.style.top = `${y1}px`;
+  line.style.width = `${length}px`;
+  line.style.transform = `rotate(${angle}deg)`;
+  table.appendChild(line);
+  window.setTimeout(() => line.remove(), 680);
+}
+
+function renderPlayedCards() {
+  const holder = $("playedCards");
+  if (!holder) return;
+  holder.innerHTML = state.playedCards.map((card, index) => `
+    <span class="${card.type}" style="--i:${index}; background-image: url('./assets/processed/cards/${card.art}.jpg')">
+      <b>${card.name}</b>
+      <em>${card.rank || ""}${card.suit || ""}</em>
+    </span>
+  `).join("");
+}
+
+function animateOpeningDeal(done) {
+  if (typeof document === "undefined" || !state.players.length) {
+    if (typeof done === "function") done();
+    return;
+  }
   const deckPile = document.querySelector(".deck-pile");
   const deckRect = deckPile?.getBoundingClientRect();
-  if (!deckRect) return;
+  if (!deckRect) {
+    if (typeof done === "function") done();
+    return;
+  }
 
   const dealTargets = [];
   state.players.forEach((player) => {
@@ -357,6 +437,9 @@ function animateOpeningDeal() {
       animateDealCard(deckRect, target.element, target.offset, target.bonus);
     }, index * 78);
   });
+  window.setTimeout(() => {
+    if (typeof done === "function") done();
+  }, dealTargets.length * 78 + 980);
 }
 
 function animateDealCard(deckRect, targetElement, offset = 0, bonus = false) {
@@ -397,7 +480,9 @@ function attack(user, target, group = false) {
     return;
   }
   if (!target.isHuman && dodgeIndex >= 0 && Math.random() > 0.24) {
-    state.discard.push(target.hand.splice(dodgeIndex, 1)[0]);
+    const dodgeCard = target.hand.splice(dodgeIndex, 1)[0];
+    state.discard.push(dodgeCard);
+    addPlayedCard(dodgeCard);
     log(`${target.name} 打出【临场改稿】，闪避 ${group ? "群体压力" : `${user.name} 的突袭`}。`);
     if (user.skill === "字重") {
       draw(user, 1);
@@ -417,7 +502,9 @@ function resolveDodge(useCard) {
   if (useCard) {
     const index = target.hand.findIndex((card) => card.key === "shan");
     if (index >= 0) {
-      state.discard.push(target.hand.splice(index, 1)[0]);
+      const dodgeCard = target.hand.splice(index, 1)[0];
+      state.discard.push(dodgeCard);
+      addPlayedCard(dodgeCard);
       log(`${target.name} 打出【临场改稿】，避开突袭。`);
       if (source.skill === "字重") {
         draw(source, 1);
@@ -475,7 +562,9 @@ function enterDying(target, source) {
     return;
   }
   if (!target.isHuman && peachIndex >= 0) {
-    state.discard.push(target.hand.splice(peachIndex, 1)[0]);
+    const peachCard = target.hand.splice(peachIndex, 1)[0];
+    state.discard.push(peachCard);
+    addPlayedCard(peachCard);
     target.hp = 1;
     log(`${target.name} 使用【灵感补给】，回到 1 点体力。`);
     return;
@@ -498,7 +587,9 @@ function resolvePeach(useCard) {
   if (useCard) {
     const index = target.hand.findIndex((card) => card.key === "tao");
     if (index >= 0) {
-      state.discard.push(target.hand.splice(index, 1)[0]);
+      const peachCard = target.hand.splice(index, 1)[0];
+      state.discard.push(peachCard);
+      addPlayedCard(peachCard);
       target.hp = 1;
       log(`${target.name} 使用【灵感补给】，脱离濒危。`);
     }
@@ -590,12 +681,65 @@ function useSkill() {
 }
 
 function endHumanTurn() {
-  if (state.current !== 0 || state.phase !== "play" || state.pendingResponse) return;
+  if (state.current !== 0 || state.pendingResponse) return;
+  if (state.phase === "discard") {
+    confirmHumanDiscard();
+    return;
+  }
+  if (state.phase !== "play") return;
   stopTimer();
   state.pendingCardIndex = null;
   $("targetRow").innerHTML = "";
-  discardToLimit(state.players[0]);
+  if (state.players[0].hand.length > Math.max(state.players[0].hp, 0)) {
+    startHumanDiscard();
+    return;
+  }
   endPhase(state.players[0]);
+  nextTurn();
+}
+
+function startHumanDiscard() {
+  state.phase = "discard";
+  state.turnPhase = "弃牌";
+  state.pendingCardIndex = null;
+  state.discardSelection = [];
+  log(`进入弃牌阶段，请选择 ${discardNeeded(state.players[0])} 张手牌弃置。`);
+  render();
+  startTimer("discard", discardTimeLimit);
+}
+
+function discardNeeded(player) {
+  return Math.max(0, player.hand.length - Math.max(player.hp, 0));
+}
+
+function toggleDiscardCard(index) {
+  if (state.current !== 0 || state.phase !== "discard") return;
+  const selected = state.discardSelection.includes(index);
+  state.discardSelection = selected
+    ? state.discardSelection.filter((item) => item !== index)
+    : [...state.discardSelection, index];
+  render();
+}
+
+function confirmHumanDiscard(auto = false) {
+  const player = state.players[0];
+  const needed = discardNeeded(player);
+  if (!auto && state.discardSelection.length < needed) {
+    log(`还需要选择 ${needed - state.discardSelection.length} 张牌。`);
+    return;
+  }
+  stopTimer();
+  const selected = auto && state.discardSelection.length < needed
+    ? Array.from({ length: needed }, (_, index) => player.hand.length - 1 - index)
+    : state.discardSelection.slice(0, needed);
+  selected.sort((a, b) => b - a).forEach((index) => {
+    const card = player.hand.splice(index, 1)[0];
+    if (card) state.discard.push(card);
+  });
+  log(`${player.name} 弃 ${selected.length} 张牌，手牌调整至 ${player.hand.length} 张。`);
+  state.discardSelection = [];
+  state.phase = "play";
+  endPhase(player);
   nextTurn();
 }
 
@@ -632,6 +776,11 @@ function handleTimerExpired() {
     endHumanTurn();
     return;
   }
+  if (mode === "discard" && state.current === 0 && state.phase === "discard") {
+    log("弃牌时间结束，自动弃牌。");
+    confirmHumanDiscard(true);
+    return;
+  }
   if (mode === "response" && state.pendingResponse) {
     log("响应时间结束，自动放弃响应。");
     if (state.pendingResponse.kind === "dodge") resolveDodge(false);
@@ -654,7 +803,7 @@ function renderTimer() {
     }
     return;
   }
-  const labelText = state.timerMode === "response" ? "响应" : "出牌";
+  const labelText = state.timerMode === "response" ? "响应" : state.timerMode === "discard" ? "弃牌" : "出牌";
   const percent = Math.max(0, Math.min(100, (state.timerLeft / state.timerTotal) * 100));
   label.textContent = `${labelText} ${state.timerLeft}s`;
   fill.style.width = `${percent}%`;
@@ -677,6 +826,7 @@ function discardToLimit(player) {
 }
 
 function aiPlay() {
+  if (state.openingLocked) return;
   const ai = state.players[state.current];
   if (!ai?.alive || ai.isHuman) return;
   playAiHeal(ai);
@@ -712,6 +862,7 @@ function playAiHeal(ai) {
   animatePlayedCard(card, { sourceSeat: ai.seat });
   resolveCard(ai, card);
   state.discard.push(card);
+  addPlayedCard(card);
 }
 
 function playAiBrainstorm(ai) {
@@ -721,6 +872,7 @@ function playAiBrainstorm(ai) {
   animatePlayedCard(card, { sourceSeat: ai.seat });
   resolveCard(ai, card);
   state.discard.push(card);
+  addPlayedCard(card);
 }
 
 function playAiTactic(ai) {
@@ -732,9 +884,10 @@ function playAiTactic(ai) {
     ai.hand.push(card);
     return;
   }
-  animatePlayedCard(card, { sourceSeat: ai.seat });
+  animatePlayedCard(card, { sourceSeat: ai.seat, targetSeat: target.seat });
   resolveCard(ai, card, target.seat);
   state.discard.push(card);
+  addPlayedCard(card);
 }
 
 function playAiAttack(ai) {
@@ -743,9 +896,10 @@ function playAiAttack(ai) {
     const card = takeCard(ai, (item) => item.key === "sha");
     if (!card) return;
     const target = chooseAiTarget(ai);
-    animatePlayedCard(card, { sourceSeat: ai.seat });
+    animatePlayedCard(card, { sourceSeat: ai.seat, targetSeat: target.seat });
     resolveCard(ai, card, target.seat);
     state.discard.push(card);
+    addPlayedCard(card);
     if (state.pendingResponse || !target.alive || Math.random() < 0.55) return;
   }
 }
@@ -841,8 +995,10 @@ function render() {
   $("opponents").innerHTML = state.players.slice(1).map((player) => renderPlayer(player, player.seat, !player.alive)).join("");
   $("selfPlayer").innerHTML = renderPlayer(state.players[0], 0, true);
   bindTargetablePlayers();
+  bindPlayerTooltips();
   renderTargetButtons(pendingCard);
   renderHand();
+  renderPlayedCards();
   renderResponse();
   renderEndModal();
   renderTimer();
@@ -862,6 +1018,36 @@ function bindTargetablePlayers() {
       $("targetRow").innerHTML = "";
       playCard(state.pendingCardIndex, seat);
     });
+  });
+}
+
+function bindPlayerTooltips() {
+  const tooltip = $("playerTooltip");
+  if (!tooltip) return;
+  const moveTooltip = (event) => {
+    const margin = 16;
+    const width = 260;
+    const x = Math.min(window.innerWidth - width - margin, event.clientX + 18);
+    const y = Math.min(window.innerHeight - 150, event.clientY + 18);
+    tooltip.style.left = `${Math.max(margin, x)}px`;
+    tooltip.style.top = `${Math.max(margin, y)}px`;
+  };
+  document.querySelectorAll(".player-card").forEach((cardEl) => {
+    cardEl.addEventListener("mouseenter", (event) => {
+      const player = state.players[Number(cardEl.dataset.seat)];
+      if (!player) return;
+      const equip = player.equipment.length ? player.equipment.map((card) => `${card.name}：${card.text}`).join(" / ") : "暂无装备";
+      tooltip.innerHTML = `
+        <strong>${player.name} · ${player.skill}</strong>
+        <span>${player.title}</span>
+        <p>${player.desc}</p>
+        <em>${equip}</em>
+      `;
+      tooltip.classList.remove("hidden");
+      moveTooltip(event);
+    });
+    cardEl.addEventListener("mousemove", moveTooltip);
+    cardEl.addEventListener("mouseleave", () => tooltip.classList.add("hidden"));
   });
 }
 
@@ -902,9 +1088,11 @@ function renderEndModal() {
 
 function renderHand() {
   const human = state.players[0];
+  const discarding = state.phase === "discard" && state.current === 0;
+  const needed = discardNeeded(human);
   $("hand").innerHTML = human.hand.map((card, index) => {
-    const disabled = !canUseCard(human, card);
-    const selected = index === state.pendingCardIndex ? "selected-card" : "";
+    const disabled = discarding ? false : !canUseCard(human, card);
+    const selected = index === state.pendingCardIndex || state.discardSelection.includes(index) ? "selected-card" : "";
     const mid = (human.hand.length - 1) / 2;
     const rot = ((index - mid) * 4.2).toFixed(2);
     const lift = (Math.abs(index - mid) * 5).toFixed(1);
@@ -918,11 +1106,18 @@ function renderHand() {
     `;
   }).join("");
   document.querySelectorAll(".card").forEach((button) => {
-    button.addEventListener("click", () => playCard(Number(button.dataset.card)));
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.card);
+      if (discarding) toggleDiscardCard(index);
+      else playCard(index);
+    });
   });
-  $("skillBtn").disabled = state.current !== 0 || state.skillUsed || state.pendingResponse || state.gameOver;
-  $("endBtn").disabled = state.current !== 0 || state.pendingResponse || state.gameOver;
-  $("handTip").textContent = `本回合突袭 ${state.attackUsed}/${maxAttacks(human)}，体力 ${human.hp}/${human.maxHp}`;
+  $("skillBtn").disabled = discarding || state.current !== 0 || state.skillUsed || state.pendingResponse || state.gameOver;
+  $("endBtn").disabled = discarding ? state.discardSelection.length < needed : state.current !== 0 || state.pendingResponse || state.gameOver;
+  $("endBtn").textContent = discarding ? `确认弃牌 ${state.discardSelection.length}/${needed}` : "结束出牌";
+  $("handTip").textContent = discarding
+    ? `弃牌阶段：请选择 ${needed} 张，已选 ${state.discardSelection.length} 张`
+    : `本回合突袭 ${state.attackUsed}/${maxAttacks(human)}，体力 ${human.hp}/${human.maxHp}`;
 }
 
 function renderResponse() {
@@ -938,20 +1133,32 @@ function renderResponse() {
   const target = state.players[response.targetSeat];
   modal.classList.remove("hidden");
   if (response.kind === "dodge") {
-    $("responseTitle").textContent = "请响应【临场改稿】";
-    $("responseText").textContent = `${target.name} 正被突袭。你可以打出一张【临场改稿】，否则受到 1 点压力。`;
+    $("responseTitle").textContent = "请打出【临场改稿】";
+    $("responseText").innerHTML = `
+      <span class="response-card-preview defense">
+        <i style="background-image: url('./assets/processed/cards/quick-revision.jpg')"></i>
+        <strong>临场改稿</strong>
+      </span>
+      <em>${target.name} 正被【提案突袭】指定。打出【临场改稿】可抵消，否则受到 1 点压力。</em>
+    `;
     $("responseActions").innerHTML = `
-      <button class="secondary" id="useDodgeBtn" type="button">打出临场改稿</button>
-      <button class="ghost" id="skipDodgeBtn" type="button">不响应</button>
+      <button class="secondary" id="useDodgeBtn" type="button">打出【临场改稿】</button>
+      <button class="ghost" id="skipDodgeBtn" type="button">不出</button>
     `;
     $("useDodgeBtn").addEventListener("click", () => resolveDodge(true));
     $("skipDodgeBtn").addEventListener("click", () => resolveDodge(false));
   }
   if (response.kind === "peach") {
     $("responseTitle").textContent = "濒危求救";
-    $("responseText").textContent = `${target.name} 体力降至 0。是否使用【灵感补给】脱离濒危？`;
+    $("responseText").innerHTML = `
+      <span class="response-card-preview heal">
+        <i style="background-image: url('./assets/processed/cards/inspiration-supply.jpg')"></i>
+        <strong>灵感补给</strong>
+      </span>
+      <em>${target.name} 体力降至 0。使用【灵感补给】脱离濒危。</em>
+    `;
     $("responseActions").innerHTML = `
-      <button class="secondary" id="usePeachBtn" type="button">使用灵感补给</button>
+      <button class="secondary" id="usePeachBtn" type="button">使用【灵感补给】</button>
       <button class="ghost" id="skipPeachBtn" type="button">放弃</button>
     `;
     $("usePeachBtn").addEventListener("click", () => resolvePeach(true));
@@ -961,6 +1168,7 @@ function renderResponse() {
 
 function getHintText() {
   if (state.pendingResponse) return "等待响应";
+  if (state.phase === "discard") return "选择要弃置的手牌";
   if (state.pendingCardIndex !== null) {
     const card = state.players[0]?.hand[state.pendingCardIndex];
     return card ? `选择【${card.name}】的目标` : "选择目标";
