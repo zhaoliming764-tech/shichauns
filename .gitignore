@@ -1,4 +1,7 @@
 .env
 .env.*
 !.env.example
-
+assets/generated/candidates/
+assets/generated/reviews/
+__pycache__/
+*.pyc

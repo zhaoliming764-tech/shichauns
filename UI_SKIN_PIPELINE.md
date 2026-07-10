@@ -14,6 +14,26 @@
 
 4. 刷新页面。脚本会自动生成 `assets/processed/ui/skin-*` 组件并完成整套替换。
 
+## 自动生成、审查与重试
+
+密钥保存在被 Git 忽略的 `.env.local` 后，可以直接运行：
+
+```powershell
+node tools/generate_ui_skin.mjs --attempts 3 --quality medium
+```
+
+管线使用 `ui-layout.json` 作为唯一几何真源：生成提示词会写入精确像素区域，`build_assets.py` 使用同一组归一化坐标裁图，`review_ui_skin.py` 检查每个槽位的亮度、边框对比度和文字安全区细节，`ui_contract_test.mjs` 检查槽位选择器与成品文件是否仍然存在。
+
+每次生成先写入 `assets/generated/candidates/`，审查报告写入 `assets/generated/reviews/`。只有通过审查的候选图才会替换当前 `ui-art-table-v4.png`；失败结果会自动把具体问题加入下一次提示词。所有尝试都失败时，当前线上皮肤保持不变。
+
+修改代码布局时先改 `ui-layout.json`，再运行：
+
+```powershell
+python tools/build_assets.py
+node tools/ui_contract_test.mjs
+node tools/smoke_test.mjs
+```
+
 ## 推荐生成提示词
 
 ```text

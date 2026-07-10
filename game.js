@@ -74,6 +74,7 @@ function buildDeck() {
 }
 
 function draw(player, count) {
+  const drawn = [];
   for (let i = 0; i < count; i += 1) {
     if (!state.deck.length) {
       state.deck = shuffle(state.discard);
@@ -81,7 +82,23 @@ function draw(player, count) {
       log("弃牌堆重新洗回牌堆。");
     }
     const card = state.deck.pop();
-    if (card) player.hand.push(card);
+    if (card) {
+      player.hand.push(card);
+      drawn.push(card);
+    }
+  }
+  if (drawn.length && typeof document !== "undefined" && state.phase !== "setup" && !state.openingLocked) {
+    window.setTimeout(() => {
+      const deckPile = document.querySelector(".deck-pile");
+      const target = player.isHuman
+        ? document.querySelector(".hand-wrap")
+        : document.querySelector(`.player-card[data-seat="${player.seat}"]`);
+      const deckRect = deckPile?.getBoundingClientRect();
+      if (!deckRect || !target) return;
+      drawn.forEach((_, index) => {
+        window.setTimeout(() => animateDealCard(deckRect, target, index - (drawn.length - 1) / 2, true), index * 170);
+      });
+    }, 60);
   }
 }
 
@@ -1112,6 +1129,7 @@ function renderHand() {
       else playCard(index);
     });
   });
+  $("skillBtn").textContent = `发动【${human.skill}】`;
   $("skillBtn").disabled = discarding || state.current !== 0 || state.skillUsed || state.pendingResponse || state.gameOver;
   $("endBtn").disabled = discarding ? state.discardSelection.length < needed : state.current !== 0 || state.pendingResponse || state.gameOver;
   $("endBtn").textContent = discarding ? `确认弃牌 ${state.discardSelection.length}/${needed}` : "结束出牌";

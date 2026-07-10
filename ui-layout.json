@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "canvas": { "width": 1672, "height": 941, "aspect": "16:9" },
+  "style": "mature commercial strategy card game, dark carved wood, aged brass, oxblood lacquer, warm parchment, restrained cinematic lighting",
+  "slots": {
+    "board": { "file": "skin-board.jpg", "rect": [0.0, 0.0, 1.0, 1.0], "output": [1920, 1080], "selector": ".battlefield" },
+    "player": { "file": "skin-player-frame.png", "rect": [0.078, 0.025, 0.188, 0.165], "output": [420, 560], "selector": ".player-card, .hero-option", "safeInset": 0.12 },
+    "card": { "file": "skin-card-frame.png", "rect": [0.078, 0.18, 0.188, 0.37], "output": [420, 600], "selector": ".card", "safeInset": 0.12 },
+    "hand": { "file": "skin-hand-tray.jpg", "rect": [0.205, 0.785, 0.805, 0.995], "output": [1600, 420], "selector": ".hand-wrap", "safeInset": 0.08 },
+    "log": { "file": "skin-log-panel.jpg", "rect": [0.82, 0.16, 0.995, 0.765], "output": [560, 1000], "selector": ".log-panel", "safeInset": 0.1 },
+    "phase": { "file": "skin-phase-plaque.png", "rect": [0.31, 0.025, 0.69, 0.14], "output": [1200, 230], "selector": ".phase-rail, .table-status", "safeInset": 0.16 },
+    "modal": { "file": "skin-modal.jpg", "rect": [0.19, 0.12, 0.81, 0.78], "output": [1200, 760], "selector": ".response-box, .end-box, .identity-box, .setup-copy", "safeInset": 0.1 },
+    "button": { "file": "skin-button-gold.png", "rect": [0.315, 0.035, 0.565, 0.125], "output": [900, 180], "selector": ".primary, .secondary, .ghost", "safeInset": 0.18 }
+  },
+  "review": {
+    "minBrightness": 28,
+    "maxBrightness": 226,
+    "minBorderContrast": 7,
+    "maxSafeZoneDetail": 34,
+    "requiredCoverage": 0.96
+  }
+}

@@ -1,10 +1,12 @@
+import json
 from pathlib import Path
-from PIL import Image, ImageChops, ImageFilter, ImageOps
+from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "assets"
 PROCESSED = ASSETS / "processed"
 CUTOUTS = ASSETS / "cutouts"
+UI_CONTRACT = json.loads((ROOT / "ui-layout.json").read_text(encoding="utf-8"))
 
 HEROES = [
     "ma-xinyu",
@@ -129,6 +131,33 @@ def build_ui_assets():
             crop.save(PROCESSED / "ui" / name, quality=92)
 
 
+def save_ui_crop(source, name, box, size, quality=94):
+    crop = source.crop(crop_box_by_ratio(source, *box))
+    crop = ImageOps.fit(crop, size, method=Image.Resampling.LANCZOS)
+    target = PROCESSED / "ui" / name
+    if target.suffix.lower() in {".jpg", ".jpeg"}:
+        crop.convert("RGB").save(target, quality=quality, optimize=True)
+    else:
+        crop.convert("RGBA").save(target, optimize=True)
+    return crop
+
+
+def build_commercial_skin():
+    master_path = ASSETS / "generated" / "ui-art-table-v4.png"
+    if not master_path.exists():
+        print(f"commercial skin skipped: missing {master_path}")
+        return
+    master = Image.open(master_path).convert("RGB")
+    built = {}
+    for name, spec in UI_CONTRACT["slots"].items():
+        built[name] = save_ui_crop(master, spec["file"], tuple(spec["rect"]), tuple(spec["output"]))
+    button = built["button"]
+    red = ImageEnhance.Brightness(ImageEnhance.Color(button).enhance(1.65)).enhance(0.72)
+    red.save(PROCESSED / "ui" / "skin-button-red.png", optimize=True)
+    dark = ImageEnhance.Brightness(ImageEnhance.Color(button).enhance(0.35)).enhance(0.45)
+    dark.save(PROCESSED / "ui" / "skin-button-dark.png", optimize=True)
+
+
 def build_card_art():
     sheet = Image.open(ASSETS / "cards" / "card-art-sheet.png").convert("RGB")
     width, height = sheet.size
@@ -146,6 +175,7 @@ def main():
     ensure_dirs()
     build_character_cutouts()
     build_ui_assets()
+    build_commercial_skin()
     build_card_art()
     print("asset build complete")
 
